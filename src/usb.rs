@@ -2,9 +2,10 @@
 // https://github.com/esp-rs/esp-idf-sys/issues/301
 // https://github.com/esp-rs/esp-idf-hal/issues/231
 
-use crate::descriptor;
-use crate::keycode::AsKeyboardReport;
+mod descriptor;
+mod keycode;
 use esp_idf_svc::sys::{self, tinyusb};
+use keycode::AsKeyboardReport as _;
 
 static mut INSTALLED_USB: *const Usb = std::ptr::null();
 
@@ -74,7 +75,7 @@ impl<'a> HidInstance<'a> {
         self.descriptor
     }
 
-    // type_keys can only be used only for KeyboardReport
+    // type_keys can only be used for KeyboardReport
     pub fn type_keys(&self, keys: &std::ffi::CStr) {
         for report in keys
             .to_bytes()
@@ -82,15 +83,28 @@ impl<'a> HidInstance<'a> {
             .map(|char| (*char).as_keyboard_report())
             .flatten()
         {
+            if (report.modifier != 0) {
+                let mut modifier_only = report.clone();
+                modifier_only.keycodes = [0; 6];
+                self.push(&modifier_only);
+                esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+            }
+
             // Press keys
             self.push(&report);
 
-            // Hold key for 10 ms
-            esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+            // Hold keys for a short period of time
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(50);
 
             // Release keys
+            if (report.modifier != 0) {
+                let mut modifier_only = report.clone();
+                modifier_only.keycodes = [0; 6];
+                self.push(&modifier_only);
+                esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+            }
             self.push(&usbd_hid::descriptor::KeyboardReport::default());
-            esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(20);
         }
     }
 
