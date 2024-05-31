@@ -1,3 +1,4 @@
+use crate::usb::HidInstance;
 use bytes::BufMut;
 
 pub fn string_descriptor() -> [*const std::ffi::CStr; 5] {
@@ -23,7 +24,7 @@ pub fn string_descriptor_count() -> usize {
 
 // https://github.com/espressif/esp-idf/blob/4523f2d67465373f0e732a3264273a8e84a1a6d1/examples/peripherals/usb/device/tusb_hid/main/tusb_hid_example_main.c#L50-L56
 #[allow(non_snake_case)]
-pub fn config_descriptor(hid_descriptors: &[&[u8]]) -> Box<[u8]> {
+pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
     const BUFFER_SIZE: usize = 128;
     let mut array = [0u8; BUFFER_SIZE];
     let mut buf = &mut array[..];
@@ -54,9 +55,9 @@ pub fn config_descriptor(hid_descriptors: &[&[u8]]) -> Box<[u8]> {
     buf.put_u8(0x21); // bDescriptorType == HID(0x21) (const)
     buf.put_u16_le(0x0111); // bcdHID == v1.11
     buf.put_u8(0); // bCountryCode (0 if not specify)
-    buf.put_u8(hid_descriptors.len() as u8); // bNumDescriptors
+    buf.put_u8(instances.len() as u8); // bNumDescriptors
     buf.put_u8(0x22); // bDescriptorType (type of HID report descriptor)
-    let descriptor_size: u16 = hid_descriptors.iter().map(|d| d.len() as u16).sum();
+    let descriptor_size: u16 = instances.iter().map(|d| d.desc().len() as u16).sum();
     buf.put_u16_le(descriptor_size); // wDescriptorLength
 
     // ENDPOINT DESCRIPTOR

@@ -3,19 +3,18 @@
 // https://github.com/esp-rs/esp-idf-hal/issues/231
 
 use crate::descriptor;
+use crate::keycode::AsKeyboardReport;
 use esp_idf_svc::sys::{self, tinyusb};
-use usbd_hid::descriptor::SerializedDescriptor;
 
-type Descriptor = &'static [u8];
 static mut INSTALLED_USB: *const Usb = std::ptr::null();
 
 pub struct Usb<'a> {
-    descriptors: &'a [Descriptor],
+    pub instances: &'a [HidInstance<'a>],
 }
 
 impl<'a> Usb<'a> {
-    pub fn new(descriptors: &'a [Descriptor]) -> Self {
-        Self { descriptors }
+    pub fn new(instances: &'a [HidInstance<'a>]) -> Self {
+        Self { instances }
     }
 
     pub fn init(&self) -> anyhow::Result<()> {
@@ -28,7 +27,7 @@ impl<'a> Usb<'a> {
         }
 
         let mut tusb_cfg: tinyusb::tinyusb_config_t = unsafe { std::mem::zeroed() };
-        let config_descriptor = descriptor::config_descriptor(self.descriptors);
+        let config_descriptor = descriptor::config_descriptor(&self.instances);
         tusb_cfg
             .__bindgen_anon_2
             .__bindgen_anon_1
@@ -63,11 +62,68 @@ impl<'a> Drop for Usb<'a> {
     }
 }
 
+#[derive(Clone)]
+pub struct HidInstance<'a> {
+    pub instance_id: u8,
+    pub report_id: u8,
+    pub descriptor: &'a [u8],
+}
+
+impl<'a> HidInstance<'a> {
+    pub fn desc(&self) -> &'a [u8] {
+        self.descriptor
+    }
+
+    // type_keys can only be used only for KeyboardReport
+    pub fn type_keys(&self, keys: &std::ffi::CStr) {
+        for report in keys
+            .to_bytes()
+            .into_iter()
+            .map(|char| (*char).as_keyboard_report())
+            .flatten()
+        {
+            // Press keys
+            self.push(&report);
+
+            // Hold key for 10 ms
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+
+            // Release keys
+            self.push(&usbd_hid::descriptor::KeyboardReport::default());
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+        }
+    }
+
+    pub fn push<T: usbd_hid::descriptor::generator_prelude::Serialize>(&self, report: &T) {
+        let mut buff: [u8; 64] = [0; 64];
+        let size = ssmarshal::serialize(&mut buff, report).unwrap();
+        unsafe {
+            tinyusb::tud_hid_n_report(
+                self.instance_id,
+                self.report_id,
+                buff.as_ptr() as *const std::ffi::c_void,
+                size as u16,
+            );
+        }
+    }
+}
+
+/**  CALLBACKS  **/
+
 // Invoked when received GET HID REPORT DESCRIPTOR
 // https://github.com/espressif/esp-idf/blob/4523f2d67465373f0e732a3264273a8e84a1a6d1/examples/peripherals/usb/device/tusb_hid/main/tusb_hid_example_main.c#L62
 #[no_mangle]
 extern "C" fn tud_hid_descriptor_report_cb(instance: u8) -> *const u8 {
-    unsafe { (*INSTALLED_USB).descriptors[instance as usize].as_ptr() }
+    unsafe {
+        match (*INSTALLED_USB)
+            .instances
+            .iter()
+            .find(|i| i.instance_id == instance)
+        {
+            Some(instance) => instance.desc().as_ptr(),
+            None => std::ptr::null(),
+        }
+    }
 }
 
 #[no_mangle]

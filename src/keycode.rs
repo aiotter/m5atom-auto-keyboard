@@ -1,35 +1,16 @@
 use usbd_hid::descriptor::KeyboardReport;
 
-pub trait ToKeyboardReport {
-    fn to_report(&self) -> Option<KeyboardReport>;
+pub trait AsKeyboardReport {
+    fn as_keyboard_report(self) -> Option<KeyboardReport>;
 }
 
-impl ToKeyboardReport for u8 {
-    fn to_report(&self) -> Option<KeyboardReport> {
-        character_to_report(*self)
+impl AsKeyboardReport for u8 {
+    fn as_keyboard_report(self) -> Option<KeyboardReport> {
+        character_to_report(self as char)
     }
 }
 
-// pub trait ToKeyboardReports {
-//     fn to_reports(&self) -> std::slice::Iter<KeyboardReport>;
-// }
-// 
-// impl ToKeyboardReports for &[u8] {
-//     fn to_reports(&self) -> std::slice::Iter<KeyboardReport> {
-//         self.iter()
-//             .map(ToKeyboardReport::to_report)
-//             .flatten()
-//             .collect()
-//     }
-// }
-// 
-// impl ToKeyboardReports for &std::ffi::CStr {
-//     fn to_reports(&self) -> std::slice::Iter<KeyboardReport> {
-//         self.to_bytes().to_reports()
-//     }
-// }
-
-fn character_to_report(char: u8) -> Option<usbd_hid::descriptor::KeyboardReport> {
+fn character_to_report(char: char) -> Option<usbd_hid::descriptor::KeyboardReport> {
     // https://github.com/hathach/tinyusb/blob/fd11bf17fde6cbfdb4bb1ed7070ed4111e503ae8/src/class/hid/hid.h#L952-L1099
     use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage::*};
 
@@ -52,7 +33,7 @@ fn character_to_report(char: u8) -> Option<usbd_hid::descriptor::KeyboardReport>
         };
     }
 
-    match char as char {
+    match char {
         'A'..='Z' => key!(mod char as u8 - ('A' as u8 - KeyboardAa as u8)),
         'a'..='z' => key!(char as u8 - ('a' as u8 - KeyboardAa as u8)),
         '0'..='9' => key!(char as u8 - ('0' as u8 - Keyboard0CloseParens as u8)),

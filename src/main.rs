@@ -1,12 +1,9 @@
 #![feature(const_option)]
 
 use esp_idf_svc::hal;
-// use esp_idf_sys::tinyusb;
-use esp_idf_svc::sys::tinyusb;
-use usbd_hid::descriptor::SerializedDescriptor;
+use usbd_hid::descriptor::SerializedDescriptor as _;
 
-use m5atom_bluetooth_keyboard::{usb::Usb, keycode::ToKeyboardReport};
-
+use m5atom_bluetooth_keyboard::usb;
 
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise some patches to the runtime
@@ -16,8 +13,14 @@ fn main() -> anyhow::Result<()> {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let descriptors = &[usbd_hid::descriptor::KeyboardReport::desc()];
-    let usb = Usb::new(descriptors);
+    let keyboard = usb::HidInstance {
+        instance_id: 0,
+        report_id: 0,
+        descriptor: usbd_hid::descriptor::KeyboardReport::desc(),
+    };
+    let instances = [keyboard.clone()];
+    let usb = usb::Usb::new(&instances[..]);
+
     usb.init()?;
     log::info!("USB initialized");
 
@@ -45,43 +48,10 @@ fn main() -> anyhow::Result<()> {
         match notification.wait(hal::delay::BLOCK) {
             Some(event::BUTTON) => {
                 // input_characters(c"test");
-                c"test".input();
+                (&keyboard).type_keys(c"test");
             }
             event => println!("Unknown event: {event:?}"),
         }
-    }
-}
-
-trait InputKeycode {
-    fn input(&self);
-}
-
-impl InputKeycode for &std::ffi::CStr {
-    fn input(&self) {
-        for report in self.to_bytes().into_iter().map(|char| (*char).to_report()).flatten() {
-            // Press keys
-            push_report(&report);
-
-            // Hold key for 10 ms
-            hal::delay::FreeRtos::delay_ms(10);
-
-            // Release keys
-            push_report(&usbd_hid::descriptor::KeyboardReport::default());
-            hal::delay::FreeRtos::delay_ms(10);
-        }
-    }
-}
-
-fn push_report(report: &usbd_hid::descriptor::KeyboardReport) {
-    let mut buff: [u8; 64] = [0; 64];
-    let size = ssmarshal::serialize(&mut buff, report).unwrap();
-    unsafe {
-        tinyusb::tud_hid_n_report(
-            hid_instance::KEYBOARD,
-            0,
-            buff.as_ptr() as *const std::ffi::c_void,
-            size as u16,
-        );
     }
 }
 
@@ -89,8 +59,4 @@ pub mod event {
     use std::num::NonZeroU32;
 
     pub const BUTTON: NonZeroU32 = NonZeroU32::new(1).unwrap();
-}
-
-pub mod hid_instance {
-    pub const KEYBOARD: u8 = 0;
 }
