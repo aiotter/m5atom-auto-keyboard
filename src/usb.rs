@@ -39,10 +39,8 @@ impl<'a> Usb<'a> {
         //     descriptor::string_descriptor_count() as *mut *const i8;
 
         log::info!("installing USB...");
-
-        storage::init()?;
         sys::esp!(unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) })?;
-        // std::mem::forget(config_descriptor);
+
         Ok(())
     }
 

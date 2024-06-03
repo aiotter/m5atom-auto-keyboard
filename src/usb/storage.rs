@@ -21,8 +21,8 @@ pub fn init() -> anyhow::Result<()> {
     sys::esp!(unsafe { sys::wl_mount(data_partition, std::ptr::addr_of_mut!(WL_HANDLE)) })?;
 
     let mut config_spi: tinyusb::tinyusb_msc_spiflash_config_t = unsafe { std::mem::zeroed() };
-    // config_spi.wl_handle = unsafe { std::ptr::addr_of_mut!(WL_HANDLE).addr() as i32 };  // <- failed
     config_spi.wl_handle = unsafe { WL_HANDLE };
+    config_spi.mount_config.format_if_mount_failed = true;
 
     sys::esp!(unsafe {
         tinyusb::tinyusb_msc_storage_init_spiflash(std::ptr::from_ref(&config_spi))
@@ -44,3 +44,6 @@ pub fn deinit() {
     unsafe { tinyusb::tinyusb_msc_storage_deinit() }
 }
 
+pub fn is_exposed() -> bool {
+    unsafe { tinyusb::tinyusb_msc_storage_in_use_by_usb_host() }
+}

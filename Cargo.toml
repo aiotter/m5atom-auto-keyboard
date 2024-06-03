@@ -31,6 +31,9 @@ ssmarshal = { version = "1.0.0", features = ["std"] }
 # binary_serde = { version = "1.0.24", features = ["std"] }
 bytes = "1.6.0"
 anyhow = "1.0.86"
+ws2812-esp32-rmt-driver = { version = "0.7.1", features = ["unstable"] }
+# smart-leds = "0.4.0"
+smart-leds-trait = "0.2"
 # smallvec = "1.13.2"
 # lazy_static = "1.4.0"
 
@@ -38,7 +41,8 @@ anyhow = "1.0.86"
 embuild = "0.31.3"
 # embuild1 = { package = "embuild", git = "https://github.com/esp-rs/embuild.git", features = ["espidf"] }
 
-# [patch.crates-io]
+[patch.crates-io]
+ws2812-esp32-rmt-driver = { git = "https://github.com/jean-santos/ws2812-esp32-rmt-driver.git" }
 # https://github.com/esp-rs/esp-idf-sys/pull/202
 # esp-idf-sys = { git = "https://github.com/gopakumarce/esp-idf-sys.git", branch = "gopa-inline_fns" }  # v0.33.0
 # esp-idf-sys = { git = "https://github.com/aiotter/esp-idf-sys.git", branch = "gopa-inline_fns" }  # v0.34.1
