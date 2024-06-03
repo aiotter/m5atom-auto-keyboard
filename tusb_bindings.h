@@ -22,4 +22,9 @@
 #include "tusb_cdc_acm.h"
 #endif
 
+// #if CONFIG_TINYUSB_MSC_ENABLED
+#include "tusb_msc_storage.h"
+#include "class/msc/msc.h"
+// #endif
+
 #endif

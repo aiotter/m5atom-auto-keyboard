@@ -10,6 +10,12 @@ impl AsKeyboardReport for u8 {
     }
 }
 
+impl AsKeyboardReport for char {
+    fn as_keyboard_report(self) -> Option<KeyboardReport> {
+        character_to_report(self)
+    }
+}
+
 fn character_to_report(char: char) -> Option<usbd_hid::descriptor::KeyboardReport> {
     // https://github.com/hathach/tinyusb/blob/fd11bf17fde6cbfdb4bb1ed7070ed4111e503ae8/src/class/hid/hid.h#L952-L1099
     use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage::*};

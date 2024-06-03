@@ -1,6 +1,7 @@
 #![feature(const_option)]
 
 use esp_idf_svc::hal;
+use std::io::Read as _;
 use usbd_hid::descriptor::SerializedDescriptor as _;
 
 use m5atom_bluetooth_keyboard::usb;
@@ -20,9 +21,13 @@ fn main() -> anyhow::Result<()> {
     };
     let instances = [keyboard.clone()];
     let usb = usb::Usb::new(&instances[..]);
-
     usb.init()?;
+
     log::info!("USB initialized");
+
+    usb::storage::mount(c"/usb")?;
+    let _ = std::fs::File::create_new("/usb/input.txt").ok();
+    usb::storage::unmount()?;
 
     let peripherals = hal::peripherals::Peripherals::take()?;
 
@@ -47,8 +52,15 @@ fn main() -> anyhow::Result<()> {
 
         match notification.wait(hal::delay::BLOCK) {
             Some(event::BUTTON) => {
-                // input_characters(c"test");
-                (&keyboard).type_keys(c"test");
+                // (&keyboard).type_keys(c"test".to_bytes());
+
+                let _ = usb::storage::mount(c"/usb");  // ignore error when already mounted
+                let stream = std::fs::File::options()
+                    .read(true)
+                    .open("/usb/input.txt")?
+                    .bytes();
+                (&keyboard).type_keys(&mut stream.flatten());
+                // usb::storage::unmount()?;
             }
             event => println!("Unknown event: {event:?}"),
         }

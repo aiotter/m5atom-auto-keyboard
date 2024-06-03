@@ -4,11 +4,13 @@
 
 mod descriptor;
 mod keycode;
+pub mod storage;
+
 use esp_idf_svc::sys::{self, tinyusb};
-use keycode::AsKeyboardReport as _;
 
 static mut INSTALLED_USB: *const Usb = std::ptr::null();
 
+#[derive(Debug)]
 pub struct Usb<'a> {
     pub instances: &'a [HidInstance<'a>],
 }
@@ -37,16 +39,11 @@ impl<'a> Usb<'a> {
         //     descriptor::string_descriptor_count() as *mut *const i8;
 
         log::info!("installing USB...");
-        match unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) } {
-            sys::ESP_OK => Ok(()),
-            err => {
-                let err_name = unsafe { std::ffi::CStr::from_ptr(tinyusb::esp_err_to_name(err)) };
-                Err(anyhow::anyhow!(
-                    "tinyusb_driver_install failed: {err_name:?}"
-                ))
-            }
-        }
+
+        storage::init()?;
+        sys::esp!(unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) })?;
         // std::mem::forget(config_descriptor);
+        Ok(())
     }
 
     pub fn is_ready(&self) -> bool {
@@ -56,14 +53,12 @@ impl<'a> Usb<'a> {
 
 impl<'a> Drop for Usb<'a> {
     fn drop(&mut self) {
-        if unsafe { tinyusb::tinyusb_driver_uninstall() != sys::ESP_OK } {
-            panic!("tinyusb_driver_uninstall failed!");
-        }
+        sys::esp_nofail!(unsafe { tinyusb::tinyusb_driver_uninstall() });
         unsafe { INSTALLED_USB = std::ptr::null() };
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HidInstance<'a> {
     pub instance_id: u8,
     pub report_id: u8,
@@ -76,14 +71,9 @@ impl<'a> HidInstance<'a> {
     }
 
     // type_keys can only be used for KeyboardReport
-    pub fn type_keys(&self, keys: &std::ffi::CStr) {
-        for report in keys
-            .to_bytes()
-            .into_iter()
-            .map(|char| (*char).as_keyboard_report())
-            .flatten()
-        {
-            if (report.modifier != 0) {
+    pub fn type_keys<T: keycode::AsKeyboardReport>(&self, keys: &mut dyn Iterator<Item=T>) {
+        for report in keys.map(|char| char.as_keyboard_report()).flatten() {
+            if report.modifier != 0 {
                 let mut modifier_only = report.clone();
                 modifier_only.keycodes = [0; 6];
                 self.push(&modifier_only);
@@ -97,7 +87,7 @@ impl<'a> HidInstance<'a> {
             esp_idf_svc::hal::delay::FreeRtos::delay_ms(50);
 
             // Release keys
-            if (report.modifier != 0) {
+            if report.modifier != 0 {
                 let mut modifier_only = report.clone();
                 modifier_only.keycodes = [0; 6];
                 self.push(&modifier_only);
