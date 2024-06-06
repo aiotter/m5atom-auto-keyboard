@@ -32,7 +32,14 @@ fn main() -> anyhow::Result<()> {
         report_id: 0,
         descriptor: usbd_hid::descriptor::KeyboardReport::desc(),
     };
-    usb::install(&[keyboard.clone()])?;
+    let string_descriptor = usb::descriptor::StringDescriptor {
+        lang_id: c"\x09\x04",  // English
+        manufacturer: c"aiotter",
+        product: c"auto-keyboard",
+        hid: c"auto-keyboard",
+        msc: c"auto-keyboard",
+    };
+    usb::install(string_descriptor, &[keyboard.clone()])?;
 
     log::info!("USB initialized");
 

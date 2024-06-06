@@ -2,25 +2,57 @@ use crate::usb::HidInstance;
 use bytes::BufMut;
 use esp_idf_svc::sys::tinyusb;
 
-pub fn string_descriptor() -> [*const std::ffi::CStr; 5] {
+pub struct StringDescriptor {
+    pub lang_id: &'static std::ffi::CStr,
+    pub manufacturer: &'static std::ffi::CStr,
+    pub product: &'static std::ffi::CStr,
+    pub hid: &'static std::ffi::CStr,
+    pub msc: &'static std::ffi::CStr,
+}
+
+pub fn string_descriptor(desc: StringDescriptor) -> [*const std::ffi::c_char; 6] {
+    // let mut mac: [u8; 6] = [0; 6];
+    // sys::esp_nofail!(unsafe {sys::esp_efuse_mac_get_default(std::ptr::addr_of_mut!(mac) as *mut u8) });
+    // [
+    //     c"\x09\x04".as_ptr(),      // 0: is supported language is English (0x0409)
+    //     c"aiotter".as_ptr(),       // 1: Manufacturer
+    //     c"auto-keyboard".as_ptr(), // 2: Product
+    //     // c"123456".as_ptr(),             // 3: Serials, should use chip ID
+    //     std::ptr::null(),          // 3: Serials, should use chip ID
+    //     c"auto-keyboard".as_ptr(), // 4: HID
+    //     c"auto-keyboard".as_ptr(), // 5: MSC
+    // ]
     [
-        // std::ffi::CString::new([0x09, 0x04]).unwrap().as_c_str(), // 0: is supported language is English (0x0409)
-        c"\x09\x04",           // 0: is supported language is English (0x0409)
-        c"aiotter",            // 1: Manufacturer
-        c"bluetooth-keyboard", // 2: Product
-        c"123456",             // 3: Serials, should use chip ID
-        c"HID interface",      // 4: HID
+        desc.lang_id.as_ptr(),
+        desc.manufacturer.as_ptr(),
+        desc.product.as_ptr(),
+        std::ptr::null(), // serial number
+        desc.hid.as_ptr(),
+        desc.msc.as_ptr(),
     ]
 }
 
-pub fn string_descriptor_count() -> usize {
-    let mut sum = 0;
-    for str in &string_descriptor()[..] {
-        unsafe {
-            sum = sum + str.as_ref().unwrap().count_bytes();
-        }
+pub fn device_descriptor() -> tinyusb::tusb_desc_device_t {
+    tinyusb::tusb_desc_device_t {
+        bLength: std::mem::size_of::<tinyusb::tusb_desc_device_t>() as u8,
+        bDescriptorType: tinyusb::tusb_desc_type_t_TUSB_DESC_DEVICE as u8,
+        bcdUSB: 0x0200 as u16,
+        bDeviceClass: tinyusb::tusb_class_code_t_TUSB_CLASS_MISC as u8,
+        bDeviceSubClass: tinyusb::misc_subclass_type_t_MISC_SUBCLASS_COMMON as u8,
+        bDeviceProtocol: tinyusb::misc_protocol_type_t_MISC_PROTOCOL_IAD as u8,
+        bMaxPacketSize0: tinyusb::CFG_TUD_ENDPOINT0_SIZE as u8,
+
+        // https://github.com/obdev/v-usb/blob/master/usbdrv/USB-IDs-for-free.txt
+        idVendor: 0x16c0,
+        idProduct: 0x27db,
+
+        bcdDevice: 0x100,
+
+        iManufacturer: 0x01,
+        iProduct: 0x02,
+        iSerialNumber: 0x03,
+        bNumConfigurations: 0x01,
     }
-    sum
 }
 
 // https://github.com/espressif/esp-idf/blob/4523f2d67465373f0e732a3264273a8e84a1a6d1/examples/peripherals/usb/device/tusb_hid/main/tusb_hid_example_main.c#L50-L56
@@ -80,7 +112,7 @@ pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
     buf.put_u8(tinyusb::tusb_class_code_t_TUSB_CLASS_MSC.try_into().unwrap()); // bInterfaceClass
     buf.put_u8(tinyusb::msc_subclass_type_t_MSC_SUBCLASS_SCSI.try_into().unwrap()); // bInterfaceSubClass
     buf.put_u8(tinyusb::msc_protocol_type_t_MSC_PROTOCOL_BOT.try_into().unwrap()); // bInterfaceProtocol
-    buf.put_u8(0); // iInterface
+    buf.put_u8(5); // iInterface
 
     // MSC ENDPOINT DESCRIPTOR (OUT)
     buf.put_u8(7); // bLength == 7 (const)

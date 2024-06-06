@@ -11,7 +11,10 @@ use esp_idf_svc::sys::{self, tinyusb};
 static HID_INSTANCES: once_cell::sync::Lazy<std::sync::Mutex<Vec<HidInstance>>> =
     once_cell::sync::Lazy::new(|| std::sync::Mutex::new(vec![]));
 
-pub fn install(hid_instances: &[HidInstance<'static>]) -> anyhow::Result<()> {
+pub fn install(
+    string_descriptor: descriptor::StringDescriptor,
+    hid_instances: &[HidInstance<'static>],
+) -> anyhow::Result<()> {
     if HID_INSTANCES.lock().unwrap().len() != 0 {
         return Err(anyhow::anyhow!("USB already installed"));
     } else {
@@ -21,17 +24,21 @@ pub fn install(hid_instances: &[HidInstance<'static>]) -> anyhow::Result<()> {
             .extend_from_slice(&hid_instances);
     }
 
-    let mut tusb_cfg: tinyusb::tinyusb_config_t = unsafe { std::mem::zeroed() };
     let config_descriptor = descriptor::config_descriptor(&hid_instances);
+    let string_descriptor = Box::new(descriptor::string_descriptor(string_descriptor));
+    let device_descriptor = Box::new(descriptor::device_descriptor());
+
+    let mut tusb_cfg: Box<tinyusb::tinyusb_config_t> = Box::new(unsafe { std::mem::zeroed() });
     tusb_cfg
         .__bindgen_anon_2
         .__bindgen_anon_1
         .configuration_descriptor = Box::into_raw(config_descriptor) as *const u8;
-    // tusb_cfg.__bindgen_anon_1.device_descriptor =
-    //     descriptor::string_descriptor_count() as *mut *const i8;
+    tusb_cfg.__bindgen_anon_1.device_descriptor = Box::into_raw(device_descriptor);
+    tusb_cfg.string_descriptor_count = string_descriptor.len() as i32;
+    tusb_cfg.string_descriptor = Box::into_raw(string_descriptor) as *mut *const i8;
 
     log::info!("installing USB...");
-    sys::esp!(unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) })?;
+    sys::esp!(unsafe { tinyusb::tinyusb_driver_install(Box::into_raw(tusb_cfg)) })?;
 
     Ok(())
 }
