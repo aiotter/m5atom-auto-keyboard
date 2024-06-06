@@ -16,8 +16,6 @@ pub fn init() -> anyhow::Result<()> {
         sys::esp!(sys::ESP_ERR_NOT_FOUND as sys::esp_err_t)?;
     }
 
-    // let mut wl_handle: sys::wl_handle_t = sys::WL_INVALID_HANDLE;
-    // sys::esp!(unsafe { sys::wl_mount(data_partition, std::ptr::from_mut(&mut wl_handle)) })?;
     sys::esp!(unsafe { sys::wl_mount(data_partition, std::ptr::addr_of_mut!(WL_HANDLE)) })?;
 
     let mut config_spi: tinyusb::tinyusb_msc_spiflash_config_t = unsafe { std::mem::zeroed() };

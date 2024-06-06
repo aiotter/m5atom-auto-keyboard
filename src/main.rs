@@ -60,13 +60,6 @@ fn main() -> anyhow::Result<()> {
         (&mut button).enable_interrupt()?;
 
         // Show status by LED color
-        // if keys.len() > 0 {
-        //     #[rustfmt::skip]
-        //     led.write([RGB8 { r: 0, g: 20, b: 50 }].into_iter())?;
-        // } else {
-        //     #[rustfmt::skip]
-        //     led.write([RGB8 { r: 128, g: 0, b: 0 }].into_iter())?;
-        // }
         if usb::storage::is_exposed() {
             #[rustfmt::skip]
             led.write([RGB8 { r: 128, g: 0, b: 0 }].into_iter())?;
@@ -77,7 +70,6 @@ fn main() -> anyhow::Result<()> {
 
         match notification.wait(50) {
             Some(event::BUTTON) => {
-                // Short press: send keycodes
                 usb::storage::mount(c"/usb")?;
                 let keys: Vec<u8> = std::fs::File::options()
                     .read(true)
@@ -86,29 +78,10 @@ fn main() -> anyhow::Result<()> {
                     .flatten()
                     .collect();
                 usb::storage::unmount()?;
-                // (&keyboard).type_keys(&mut keys.clone().into_iter());
                 (&keyboard).type_keys(&mut keys.into_iter());
             }
             event => println!("Unknown event: {event:?}"),
         }
-
-        // if is_long_press(button_down_at, button_up_at) {
-        //     // Long press: delete current keys
-        //     usb::storage::mount(c"/usb")?;
-        //     let _ = std::fs::File::create("/usb/input.txt")?;
-        //     // keys.clear();
-        //     usb::storage::unmount()?;
-        // }
-
-        // Update keys
-        // usb::storage::mount(c"/usb")?;
-        // keys = std::fs::File::options()
-        //     .read(true)
-        //     .open("/usb/input.txt")?
-        //     .bytes()
-        //     .flatten()
-        //     .collect();
-        // usb::storage::unmount()?;
     }
 }
 
