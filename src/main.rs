@@ -4,9 +4,9 @@ use esp_idf_svc::hal;
 use smart_leds_trait::SmartLedsWrite;
 use std::io::Read as _;
 use usbd_hid::descriptor::SerializedDescriptor as _;
-use ws2812_esp32_rmt_driver::{lib_smart_leds::Ws2812Esp32Rmt, LedPixelEsp32Rmt, RGB8};
+use ws2812_esp32_rmt_driver::{lib_smart_leds::Ws2812Esp32Rmt, RGB8};
 
-use m5atom_bluetooth_keyboard::usb;
+use m5atom_auto_keyboard::usb;
 
 fn main() -> anyhow::Result<()> {
     // It is necessary to call this function once. Otherwise some patches to the runtime
@@ -32,9 +32,7 @@ fn main() -> anyhow::Result<()> {
         report_id: 0,
         descriptor: usbd_hid::descriptor::KeyboardReport::desc(),
     };
-    let instances = [keyboard.clone()];
-    let usb = usb::Usb::new(&instances[..]);
-    usb.init()?;
+    usb::install(&[keyboard.clone()])?;
 
     log::info!("USB initialized");
 

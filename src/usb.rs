@@ -2,58 +2,46 @@
 // https://github.com/esp-rs/esp-idf-sys/issues/301
 // https://github.com/esp-rs/esp-idf-hal/issues/231
 
-mod descriptor;
-mod keycode;
+pub mod descriptor;
+pub mod keycode;
 pub mod storage;
 
 use esp_idf_svc::sys::{self, tinyusb};
 
-static mut INSTALLED_USB: *const Usb = std::ptr::null();
+static HID_INSTANCES: once_cell::sync::Lazy<std::sync::Mutex<Vec<HidInstance>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(vec![]));
 
-#[derive(Debug)]
-pub struct Usb<'a> {
-    pub instances: &'a [HidInstance<'a>],
+pub fn install(hid_instances: &[HidInstance<'static>]) -> anyhow::Result<()> {
+    if HID_INSTANCES.lock().unwrap().len() != 0 {
+        return Err(anyhow::anyhow!("USB already installed"));
+    } else {
+        HID_INSTANCES
+            .lock()
+            .unwrap()
+            .extend_from_slice(&hid_instances);
+    }
+
+    let mut tusb_cfg: tinyusb::tinyusb_config_t = unsafe { std::mem::zeroed() };
+    let config_descriptor = descriptor::config_descriptor(&hid_instances);
+    tusb_cfg
+        .__bindgen_anon_2
+        .__bindgen_anon_1
+        .configuration_descriptor = Box::into_raw(config_descriptor) as *const u8;
+    // tusb_cfg.__bindgen_anon_1.device_descriptor =
+    //     descriptor::string_descriptor_count() as *mut *const i8;
+
+    log::info!("installing USB...");
+    sys::esp!(unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) })?;
+
+    Ok(())
 }
 
-impl<'a> Usb<'a> {
-    pub fn new(instances: &'a [HidInstance<'a>]) -> Self {
-        Self { instances }
-    }
-
-    pub fn init(&self) -> anyhow::Result<()> {
-        unsafe {
-            if INSTALLED_USB != std::ptr::null() {
-                panic!("USB already initialized");
-            };
-            let addr = std::ptr::from_ref(self).addr();
-            INSTALLED_USB = std::ptr::without_provenance(addr);
-        }
-
-        let mut tusb_cfg: tinyusb::tinyusb_config_t = unsafe { std::mem::zeroed() };
-        let config_descriptor = descriptor::config_descriptor(&self.instances);
-        tusb_cfg
-            .__bindgen_anon_2
-            .__bindgen_anon_1
-            .configuration_descriptor = Box::into_raw(config_descriptor) as *const u8;
-        // tusb_cfg.__bindgen_anon_1.device_descriptor =
-        //     descriptor::string_descriptor_count() as *mut *const i8;
-
-        log::info!("installing USB...");
-        sys::esp!(unsafe { tinyusb::tinyusb_driver_install(&tusb_cfg) })?;
-
-        Ok(())
-    }
-
-    pub fn is_ready(&self) -> bool {
-        unsafe { tinyusb::tud_mounted() }
-    }
+pub fn uninstall() -> Result<(), sys::EspError> {
+    sys::esp!(unsafe { tinyusb::tinyusb_driver_uninstall() })
 }
 
-impl<'a> Drop for Usb<'a> {
-    fn drop(&mut self) {
-        sys::esp_nofail!(unsafe { tinyusb::tinyusb_driver_uninstall() });
-        unsafe { INSTALLED_USB = std::ptr::null() };
-    }
+pub fn is_ready() -> bool {
+    unsafe { tinyusb::tud_mounted() }
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +57,7 @@ impl<'a> HidInstance<'a> {
     }
 
     // type_keys can only be used for KeyboardReport
-    pub fn type_keys<T: keycode::AsKeyboardReport>(&self, keys: &mut dyn Iterator<Item=T>) {
+    pub fn type_keys<T: keycode::AsKeyboardReport>(&self, keys: &mut dyn Iterator<Item = T>) {
         for report in keys.map(|char| char.as_keyboard_report()).flatten() {
             if report.modifier != 0 {
                 let mut modifier_only = report.clone();
@@ -116,15 +104,14 @@ impl<'a> HidInstance<'a> {
 // https://github.com/espressif/esp-idf/blob/4523f2d67465373f0e732a3264273a8e84a1a6d1/examples/peripherals/usb/device/tusb_hid/main/tusb_hid_example_main.c#L62
 #[no_mangle]
 extern "C" fn tud_hid_descriptor_report_cb(instance: u8) -> *const u8 {
-    unsafe {
-        match (*INSTALLED_USB)
-            .instances
-            .iter()
-            .find(|i| i.instance_id == instance)
-        {
-            Some(instance) => instance.desc().as_ptr(),
-            None => std::ptr::null(),
-        }
+    match HID_INSTANCES
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|i| i.instance_id == instance)
+    {
+        Some(instance) => instance.desc().as_ptr(),
+        None => std::ptr::null(),
     }
 }
 
