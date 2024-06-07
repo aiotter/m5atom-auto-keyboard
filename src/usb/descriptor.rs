@@ -109,9 +109,24 @@ pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
     buf.put_u8(1); // bInterfaceNumber
     buf.put_u8(0); // bAlternateSetting
     buf.put_u8(2); // bNumEndpoints
-    buf.put_u8(tinyusb::tusb_class_code_t_TUSB_CLASS_MSC.try_into().unwrap()); // bInterfaceClass
-    buf.put_u8(tinyusb::msc_subclass_type_t_MSC_SUBCLASS_SCSI.try_into().unwrap()); // bInterfaceSubClass
-    buf.put_u8(tinyusb::msc_protocol_type_t_MSC_PROTOCOL_BOT.try_into().unwrap()); // bInterfaceProtocol
+    buf.put_u8(
+        // bInterfaceClass
+        tinyusb::tusb_class_code_t_TUSB_CLASS_MSC
+            .try_into()
+            .unwrap(),
+    );
+    buf.put_u8(
+        // bInterfaceSubClass
+        tinyusb::msc_subclass_type_t_MSC_SUBCLASS_SCSI
+            .try_into()
+            .unwrap(),
+    );
+    buf.put_u8(
+        // bInterfaceProtocol
+        tinyusb::msc_protocol_type_t_MSC_PROTOCOL_BOT
+            .try_into()
+            .unwrap(),
+    );
     buf.put_u8(5); // iInterface
 
     // MSC ENDPOINT DESCRIPTOR (OUT)
@@ -129,7 +144,6 @@ pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
     buf.put_u8(tinyusb::tusb_xfer_type_t_TUSB_XFER_BULK.try_into().unwrap()); // bmAttributes
     buf.put_u16_le(64); // wMaxPacketSize
     buf.put_u8(0); // bInterval
-
 
     // Update wTotalLength
     let wTotalLength = BUFFER_SIZE - &buf.remaining_mut();
