@@ -1,6 +1,4 @@
-#![feature(const_option)]
-
-use esp_idf_svc::hal;
+use esp_idf_svc::{hal, sys};
 use smart_leds_trait::SmartLedsWrite;
 use std::io::Read as _;
 use usbd_hid::descriptor::SerializedDescriptor as _;
@@ -16,84 +14,111 @@ fn main() -> anyhow::Result<()> {
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    usb::storage::init()?;
-    usb::storage::mount(c"/usb")?;
-    let _ = std::fs::File::create_new("/usb/input.txt").ok();
-    // let mut keys: Vec<u8> = std::fs::File::options()
-    //     .read(true)
-    //     .open("/usb/input.txt")?
-    //     .bytes()
-    //     .flatten()
-    //     .collect();
-    usb::storage::unmount()?;
+    let peripherals = hal::peripherals::Peripherals::take()?;
+
+    let config = hal::uart::UartConfig::default().baudrate(hal::units::Hertz(115_200));
+    let _uart1 = hal::uart::UartDriver::new(
+        peripherals.uart1,
+        peripherals.pins.gpio42,
+        peripherals.pins.gpio40,
+        Option::<hal::gpio::AnyIOPin>::None,
+        Option::<hal::gpio::AnyIOPin>::None,
+        &config,
+    )?;
+    unsafe { sys::esp_vfs_dev_uart_use_driver(sys::uart_port_t_UART_NUM_1 as _) };
+    log::info!("Log is now sent to UART1");
+
+    let mut button = hal::gpio::PinDriver::input(peripherals.pins.gpio41)?;
+    button.set_pull(hal::gpio::Pull::Down)?;
+    log::info!("Button initialized");
+
+    let mut led = Ws2812Esp32Rmt::new(peripherals.rmt.channel0, peripherals.pins.gpio35).unwrap();
+    log::info!("LED initialized");
+
+    // Expose MSC to host machine only when the device is started with its button pressed down
+    let is_msc_mode = button.is_low();
+
+    log::info!("MSC mode: {is_msc_mode:?}");
+
+    let keys: Option<Vec<u8>> = if is_msc_mode {
+        None
+    } else {
+        let _mounted = usb::storage::mount_without_msc("/usb")?;
+        std::fs::File::create_new("/usb/input.txt").ok();
+        let keys: Vec<u8> = std::fs::File::options()
+            .read(true)
+            .open("/usb/input.txt")?
+            .bytes()
+            .flatten()
+            .collect();
+
+        log::info!(
+            "content: {:?}",
+            String::from_utf8(keys.clone()).unwrap_or("(cannot print)".into())
+        );
+
+        // log::info!("keys: {keys:?}");
+
+        Some(keys)
+    };
 
     let keyboard = usb::HidInstance {
         instance_id: 0,
         report_id: 0,
         descriptor: usbd_hid::descriptor::KeyboardReport::desc(),
     };
+
+    let serial: &'static std::ffi::CStr = {
+        let mut id: u64 = 0;
+        unsafe { sys::esp_flash_init(core::ptr::null_mut()) };
+        sys::esp!(unsafe { sys::esp_flash_read_unique_chip_id(core::ptr::null_mut(), &mut id) })?;
+        let boxed = Box::new(std::ffi::CString::new(id.to_string())?);
+        Box::leak(boxed)
+    };
     let string_descriptor = usb::descriptor::StringDescriptor {
-        lang_id: c"\x09\x04",  // English
+        lang_id: c"\x09\x04", // English
         manufacturer: c"aiotter",
         product: c"auto-keyboard",
         hid: c"auto-keyboard",
         msc: c"auto-keyboard",
+        serial: &serial,
     };
-    usb::install(string_descriptor, &[keyboard.clone()])?;
-
+    let hid_instances = [keyboard.clone()];
+    usb::install(string_descriptor, &hid_instances, is_msc_mode)?;
     log::info!("USB initialized");
 
-    let peripherals = hal::peripherals::Peripherals::take()?;
-
-    let mut button = hal::gpio::PinDriver::input(peripherals.pins.gpio41)?;
-    button.set_pull(hal::gpio::Pull::UpDown)?;
-    button.set_interrupt_type(hal::gpio::InterruptType::AnyEdge)?;
-
-    let notification = hal::task::notification::Notification::new();
-    let notifier = notification.notifier();
-
-    let mut led = Ws2812Esp32Rmt::new(peripherals.rmt.channel0, peripherals.pins.gpio35).unwrap();
-
-    // Safety: make sure the `Notification` object is not dropped while the subscription is active
-    unsafe {
-        button.subscribe(move || {
-            notifier.notify_and_yield(event::BUTTON);
-        })?;
+    if is_msc_mode {
+        usb::storage::init_msc()?;
+        std::fs::File::create_new("/usb/input.txt").ok();
     }
 
-    log::info!("Now waiting for a event...");
+    log::info!("Now waiting for a button press...");
 
     loop {
-        (&mut button).enable_interrupt()?;
-
         // Show status by LED color
-        if usb::storage::is_exposed() {
+        if !is_msc_mode {
+            #[rustfmt::skip]
+            led.write([RGB8 { r: 0, g: 20, b: 50 }].into_iter())?;
+        } else if usb::storage::is_exposed() {
             #[rustfmt::skip]
             led.write([RGB8 { r: 128, g: 0, b: 0 }].into_iter())?;
         } else {
             #[rustfmt::skip]
-            led.write([RGB8 { r: 0, g: 20, b: 50 }].into_iter())?;
+            led.write([RGB8 { r: 0, g: 0, b: 0 }].into_iter())?;
         }
 
-        match notification.wait(50) {
-            Some(event::BUTTON) => {
-                usb::storage::mount(c"/usb")?;
-                let keys: Vec<u8> = std::fs::File::options()
-                    .read(true)
-                    .open("/usb/input.txt")?
-                    .bytes()
-                    .flatten()
-                    .collect();
-                usb::storage::unmount()?;
-                (&keyboard).type_keys(&mut keys.into_iter());
+        if (!is_msc_mode) && button.is_low() {
+            // pushed
+            while button.is_low() {
+                std::thread::sleep(std::time::Duration::from_millis(10))
             }
-            event => println!("Unknown event: {event:?}"),
+            if let Some(ref keys) = keys {
+                println!("pushing keys: {keys:?}");
+                (&keyboard).type_keys(&mut keys.iter().map(|key| key.clone()));
+                println!("pushed");
+            };
         }
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-}
-
-pub mod event {
-    use std::num::NonZeroU32;
-
-    pub const BUTTON: NonZeroU32 = NonZeroU32::new(1).unwrap();
 }

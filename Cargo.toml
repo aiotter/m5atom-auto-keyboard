@@ -26,20 +26,17 @@ embassy = ["esp-idf-svc/embassy-sync", "esp-idf-svc/critical-section", "esp-idf-
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-esp-idf-svc = { version = "0.48", default-features = false }
+esp-idf-svc = { version = "0.51", default-features = false, features = ["experimental"] }
 usbd-hid = "0.7.0"
 ssmarshal = { version = "1.0.0", features = ["std"] }
 bytes = "1.6.0"
 anyhow = "1.0.86"
-ws2812-esp32-rmt-driver = { version = "0.7.1", features = ["unstable"] }
-smart-leds-trait = "0.2"
+ws2812-esp32-rmt-driver = { version = "0.12.0", features = ["smart-leds-trait"] }
 once_cell = "1.19.0"
+smart-leds-trait = "0.3"
 
 [build-dependencies]
-embuild = "0.31.3"
-
-[patch.crates-io]
-ws2812-esp32-rmt-driver = { git = "https://github.com/jean-santos/ws2812-esp32-rmt-driver.git" }
+embuild = "0.33.0"
 
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/esp_tinyusb", version = "^1.4.4" }

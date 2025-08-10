@@ -8,6 +8,7 @@ pub struct StringDescriptor {
     pub product: &'static std::ffi::CStr,
     pub hid: &'static std::ffi::CStr,
     pub msc: &'static std::ffi::CStr,
+    pub serial: &'static std::ffi::CStr,
 }
 
 pub fn string_descriptor(desc: StringDescriptor) -> [*const std::ffi::c_char; 6] {
@@ -26,7 +27,7 @@ pub fn string_descriptor(desc: StringDescriptor) -> [*const std::ffi::c_char; 6]
         desc.lang_id.as_ptr(),
         desc.manufacturer.as_ptr(),
         desc.product.as_ptr(),
-        std::ptr::null(), // serial number
+        desc.serial.as_ptr(), // serial number
         desc.hid.as_ptr(),
         desc.msc.as_ptr(),
     ]
@@ -57,7 +58,7 @@ pub fn device_descriptor() -> tinyusb::tusb_desc_device_t {
 
 // https://github.com/espressif/esp-idf/blob/4523f2d67465373f0e732a3264273a8e84a1a6d1/examples/peripherals/usb/device/tusb_hid/main/tusb_hid_example_main.c#L50-L56
 #[allow(non_snake_case)]
-pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
+pub fn config_descriptor(msc_enabled: bool, instances: &[HidInstance]) -> Box<[u8]> {
     const BUFFER_SIZE: usize = 128;
     let mut array = [0u8; BUFFER_SIZE];
     let mut buf = &mut array[..];
@@ -101,49 +102,51 @@ pub fn config_descriptor(instances: &[HidInstance]) -> Box<[u8]> {
     buf.put_u16_le(16); // wMaxPacketSize
     buf.put_u8(10); // bInterval
 
-    // MSC INTERFACE DESCRIPTOR
-    // https://github.com/espressif/esp-idf/blob/0453e8608bde98133a427a74ae61d272770b1bfd/examples/peripherals/usb/device/tusb_msc/main/tusb_msc_main.c#L64-L70
-    // https://github.com/hathach/tinyusb/blob/d10b65ada4be7d5754b3128e80a9b4db72bdb23f/src/device/usbd.h#L250-L257
-    buf.put_u8(9); // bLength == 9 (const)
-    buf.put_u8(4); // bDescriptorType == INTERFACE(4) (const)
-    buf.put_u8(1); // bInterfaceNumber
-    buf.put_u8(0); // bAlternateSetting
-    buf.put_u8(2); // bNumEndpoints
-    buf.put_u8(
-        // bInterfaceClass
-        tinyusb::tusb_class_code_t_TUSB_CLASS_MSC
-            .try_into()
-            .unwrap(),
-    );
-    buf.put_u8(
-        // bInterfaceSubClass
-        tinyusb::msc_subclass_type_t_MSC_SUBCLASS_SCSI
-            .try_into()
-            .unwrap(),
-    );
-    buf.put_u8(
-        // bInterfaceProtocol
-        tinyusb::msc_protocol_type_t_MSC_PROTOCOL_BOT
-            .try_into()
-            .unwrap(),
-    );
-    buf.put_u8(5); // iInterface
+    if msc_enabled {
+        // MSC INTERFACE DESCRIPTOR
+        // https://github.com/espressif/esp-idf/blob/0453e8608bde98133a427a74ae61d272770b1bfd/examples/peripherals/usb/device/tusb_msc/main/tusb_msc_main.c#L64-L70
+        // https://github.com/hathach/tinyusb/blob/d10b65ada4be7d5754b3128e80a9b4db72bdb23f/src/device/usbd.h#L250-L257
+        buf.put_u8(9); // bLength == 9 (const)
+        buf.put_u8(4); // bDescriptorType == INTERFACE(4) (const)
+        buf.put_u8(1); // bInterfaceNumber
+        buf.put_u8(0); // bAlternateSetting
+        buf.put_u8(2); // bNumEndpoints
+        buf.put_u8(
+            // bInterfaceClass
+            tinyusb::tusb_class_code_t_TUSB_CLASS_MSC
+                .try_into()
+                .unwrap(),
+        );
+        buf.put_u8(
+            // bInterfaceSubClass
+            tinyusb::msc_subclass_type_t_MSC_SUBCLASS_SCSI
+                .try_into()
+                .unwrap(),
+        );
+        buf.put_u8(
+            // bInterfaceProtocol
+            tinyusb::msc_protocol_type_t_MSC_PROTOCOL_BOT
+                .try_into()
+                .unwrap(),
+        );
+        buf.put_u8(5); // iInterface
 
-    // MSC ENDPOINT DESCRIPTOR (OUT)
-    buf.put_u8(7); // bLength == 7 (const)
-    buf.put_u8(5); // bDescriptorType == ENDPOINT(5) (const)
-    buf.put_u8(endpoint_address(2, Direction::Out));
-    buf.put_u8(tinyusb::tusb_xfer_type_t_TUSB_XFER_BULK.try_into().unwrap()); // bmAttributes
-    buf.put_u16_le(64); // wMaxPacketSize
-    buf.put_u8(0); // bInterval
+        // MSC ENDPOINT DESCRIPTOR (OUT)
+        buf.put_u8(7); // bLength == 7 (const)
+        buf.put_u8(5); // bDescriptorType == ENDPOINT(5) (const)
+        buf.put_u8(endpoint_address(2, Direction::Out));
+        buf.put_u8(tinyusb::tusb_xfer_type_t_TUSB_XFER_BULK.try_into().unwrap()); // bmAttributes
+        buf.put_u16_le(64); // wMaxPacketSize
+        buf.put_u8(0); // bInterval
 
-    // MSC ENDPOINT DESCRIPTOR (IN)
-    buf.put_u8(7); // bLength == 7 (const)
-    buf.put_u8(5); // bDescriptorType == ENDPOINT(5) (const)
-    buf.put_u8(endpoint_address(2, Direction::In));
-    buf.put_u8(tinyusb::tusb_xfer_type_t_TUSB_XFER_BULK.try_into().unwrap()); // bmAttributes
-    buf.put_u16_le(64); // wMaxPacketSize
-    buf.put_u8(0); // bInterval
+        // MSC ENDPOINT DESCRIPTOR (IN)
+        buf.put_u8(7); // bLength == 7 (const)
+        buf.put_u8(5); // bDescriptorType == ENDPOINT(5) (const)
+        buf.put_u8(endpoint_address(2, Direction::In));
+        buf.put_u8(tinyusb::tusb_xfer_type_t_TUSB_XFER_BULK.try_into().unwrap()); // bmAttributes
+        buf.put_u16_le(64); // wMaxPacketSize
+        buf.put_u8(0); // bInterval
+    }
 
     // Update wTotalLength
     let wTotalLength = BUFFER_SIZE - &buf.remaining_mut();

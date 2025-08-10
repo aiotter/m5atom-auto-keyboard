@@ -14,6 +14,7 @@ static HID_INSTANCES: once_cell::sync::Lazy<std::sync::Mutex<Vec<HidInstance>>> 
 pub fn install(
     string_descriptor: descriptor::StringDescriptor,
     hid_instances: &[HidInstance<'static>],
+    msc_enabled: bool,
 ) -> anyhow::Result<()> {
     if HID_INSTANCES.lock().unwrap().len() != 0 {
         return Err(anyhow::anyhow!("USB already installed"));
@@ -24,7 +25,7 @@ pub fn install(
             .extend_from_slice(&hid_instances);
     }
 
-    let config_descriptor = descriptor::config_descriptor(&hid_instances);
+    let config_descriptor = descriptor::config_descriptor(msc_enabled, &hid_instances);
     let string_descriptor = Box::new(descriptor::string_descriptor(string_descriptor));
     let device_descriptor = Box::new(descriptor::device_descriptor());
 
@@ -32,10 +33,10 @@ pub fn install(
     tusb_cfg
         .__bindgen_anon_2
         .__bindgen_anon_1
-        .configuration_descriptor = Box::into_raw(config_descriptor) as *const u8;
+        .configuration_descriptor = Box::into_raw(config_descriptor) as _;
     tusb_cfg.__bindgen_anon_1.device_descriptor = Box::into_raw(device_descriptor);
     tusb_cfg.string_descriptor_count = string_descriptor.len() as i32;
-    tusb_cfg.string_descriptor = Box::into_raw(string_descriptor) as *mut *const i8;
+    tusb_cfg.string_descriptor = Box::into_raw(string_descriptor) as _;
 
     log::info!("installing USB...");
     sys::esp!(unsafe { tinyusb::tinyusb_driver_install(Box::into_raw(tusb_cfg)) })?;
@@ -66,11 +67,13 @@ impl<'a> HidInstance<'a> {
     // type_keys can only be used for KeyboardReport
     pub fn type_keys<T: keycode::AsKeyboardReport>(&self, keys: &mut dyn Iterator<Item = T>) {
         for report in keys.map(|char| char.as_keyboard_report()).flatten() {
+            println!("report: {report:?}");
+
             if report.modifier != 0 {
                 let mut modifier_only = report.clone();
                 modifier_only.keycodes = [0; 6];
                 self.push(&modifier_only);
-                esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+                esp_idf_svc::hal::delay::FreeRtos::delay_ms(20);
             }
 
             // Press keys
@@ -84,10 +87,10 @@ impl<'a> HidInstance<'a> {
                 let mut modifier_only = report.clone();
                 modifier_only.keycodes = [0; 6];
                 self.push(&modifier_only);
-                esp_idf_svc::hal::delay::FreeRtos::delay_ms(10);
+                esp_idf_svc::hal::delay::FreeRtos::delay_ms(20);
             }
             self.push(&usbd_hid::descriptor::KeyboardReport::default());
-            esp_idf_svc::hal::delay::FreeRtos::delay_ms(20);
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(30);
         }
     }
 
