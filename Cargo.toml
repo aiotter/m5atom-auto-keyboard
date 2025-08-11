@@ -38,6 +38,10 @@ smart-leds-trait = "0.3"
 [build-dependencies]
 embuild = "0.33.0"
 
+[package.metadata.esp-idf-sys]
+# https://github.com/espressif/esp-idf/issues/10021#issuecomment-1846311632
+esp_idf_version = "branch:release/v5.3"
+
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/esp_tinyusb", version = "^1.4.4" }
 bindings_header = "tusb_bindings.h"

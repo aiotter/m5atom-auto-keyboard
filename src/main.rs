@@ -25,7 +25,6 @@ fn main() -> anyhow::Result<()> {
         Option::<hal::gpio::AnyIOPin>::None,
         &config,
     )?;
-    unsafe { sys::esp_vfs_dev_uart_use_driver(sys::uart_port_t_UART_NUM_1 as _) };
     log::info!("Log is now sent to UART1");
 
     let mut button = hal::gpio::PinDriver::input(peripherals.pins.gpio41)?;
